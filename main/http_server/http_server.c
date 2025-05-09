@@ -1045,6 +1045,8 @@ static esp_err_t check_auth(httpd_req_t *req)
     char *stored_username = nvs_config_get_string(NVS_CONFIG_WEB_USERNAME, "admin");
     char *stored_password = nvs_config_get_string(NVS_CONFIG_WEB_PASSWORD, "admin");
     
+    ESP_LOGI(TAG, "Stored credentials - Username: %s, Password: %s", stored_username, stored_password);
+    
     // Decode base64 credentials
     size_t decoded_len;
     unsigned char *decoded = base64_decode((const unsigned char *)credentials, strlen(credentials), &decoded_len);
@@ -1078,8 +1080,12 @@ static esp_err_t check_auth(httpd_req_t *req)
     char *username = decoded_str;
     char *password = colon + 1;
 
+    ESP_LOGI(TAG, "Received credentials - Username: %s, Password: %s", username, password);
+
     // Compare credentials
     bool auth_ok = (strcmp(username, stored_username) == 0 && strcmp(password, stored_password) == 0);
+    
+    ESP_LOGI(TAG, "Authentication result: %s", auth_ok ? "Success" : "Failed");
     
     free(decoded);
     free(stored_username);
@@ -1163,20 +1169,26 @@ static esp_err_t PATCH_update_web_credentials(httpd_req_t *req)
     }
     buf[total_len] = '\0';
 
+    ESP_LOGI(TAG, "Received JSON: %s", buf);
+
     cJSON * root = cJSON_Parse(buf);
-    cJSON * item;
     if (root == NULL) {
         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid JSON");
         return ESP_OK;
     }
 
     bool updated = false;
-    if (cJSON_IsString(item = cJSON_GetObjectItem(root, "username"))) {
-        nvs_config_set_string(NVS_CONFIG_WEB_USERNAME, item->valuestring);
+    cJSON *username_item = cJSON_GetObjectItem(root, "username");
+    cJSON *password_item = cJSON_GetObjectItem(root, "password");
+
+    if (cJSON_IsString(username_item)) {
+        ESP_LOGI(TAG, "Setting username to: %s", username_item->valuestring);
+        nvs_config_set_string(NVS_CONFIG_WEB_USERNAME, username_item->valuestring);
         updated = true;
     }
-    if (cJSON_IsString(item = cJSON_GetObjectItem(root, "password"))) {
-        nvs_config_set_string(NVS_CONFIG_WEB_PASSWORD, item->valuestring);
+    if (cJSON_IsString(password_item)) {
+        ESP_LOGI(TAG, "Setting password to: %s", password_item->valuestring);
+        nvs_config_set_string(NVS_CONFIG_WEB_PASSWORD, password_item->valuestring);
         updated = true;
     }
 

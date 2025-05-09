@@ -1,0 +1,27 @@
+<div class="grid">
+    <div class="col-12">
+        <div class="card">
+            <h5>Security Settings</h5>
+            <form [formGroup]="form" (ngSubmit)="updateCredentials()">
+                <div class="p-fluid">
+                    <div class="field">
+                        <label for="webUsername">Username</label>
+                        <input id="webUsername" type="text" pInputText formControlName="webUsername" />
+                    </div>
+
+                    <div class="field">
+                        <label for="webPassword">Password</label>
+                        <span class="p-input-icon-right">
+                            <input id="webPassword" [type]="showPassword ? 'text' : 'password'" pInputText formControlName="webPassword" />
+                            <i class="pi" [ngClass]="showPassword ? 'pi-eye-slash' : 'pi-eye'" (click)="togglePasswordVisibility()"></i>
+                        </span>
+                    </div>
+
+                    <div class="field">
+                        <button pButton type="submit" label="Save Changes" [disabled]="!form.dirty || !form.valid"></button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+</div> 
