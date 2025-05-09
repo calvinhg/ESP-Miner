@@ -33,6 +33,10 @@
 #define NVS_CONFIG_OVERCLOCK_ENABLED "oc_enabled"
 #define NVS_CONFIG_SWARM "swarmconfig"
 
+// Web authentication configuration
+#define NVS_CONFIG_WEB_USERNAME "admin"
+#define NVS_CONFIG_WEB_PASSWORD "admin"
+
 // Theme configuration
 #define NVS_CONFIG_THEME_SCHEME "themescheme"
 #define NVS_CONFIG_THEME_COLORS "themecolors"

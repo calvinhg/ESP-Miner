@@ -39,8 +39,16 @@
 #include "axe-os/api/system/asic_settings.h"
 #include "http_server.h"
 
+// Set log level for this file
+#define LOG_LEVEL ESP_LOG_VERBOSE
 static const char * TAG = "http_server";
 static const char * CORS_TAG = "CORS";
+
+// Forward declarations
+static esp_err_t GET_wifi_scan(httpd_req_t *req);
+static esp_err_t check_auth(httpd_req_t *req);
+static esp_err_t PATCH_update_web_credentials(httpd_req_t *req);
+static esp_err_t PATCH_update_web_credentials_auth(httpd_req_t *req);
 
 /* Handler for WiFi scan endpoint */
 static esp_err_t GET_wifi_scan(httpd_req_t *req)
@@ -148,12 +156,12 @@ static uint32_t extract_origin_ip_addr(char *origin)
             // Convert the IP address string to uint32_t
             origin_ip_addr = inet_addr(ip_str);
             if (origin_ip_addr == INADDR_NONE) {
-                ESP_LOGW(CORS_TAG, "Invalid IP address: %s", ip_str);
+                ESP_LOGW(TAG, "Invalid IP address: %s", ip_str);
             } else {
-                ESP_LOGD(CORS_TAG, "Extracted IP address %lu", origin_ip_addr);
+                ESP_LOGD(TAG, "Extracted IP address %lu", origin_ip_addr);
             }
         } else {
-            ESP_LOGW(CORS_TAG, "IP address string is too long: %s", ip_start);
+            ESP_LOGW(TAG, "IP address string is too long: %s", ip_start);
         }
     }
 
@@ -163,7 +171,7 @@ static uint32_t extract_origin_ip_addr(char *origin)
 esp_err_t is_network_allowed(httpd_req_t * req)
 {
     if (GLOBAL_STATE->SYSTEM_MODULE.ap_enabled == true) {
-        ESP_LOGI(CORS_TAG, "Device in AP mode. Allowing CORS.");
+        ESP_LOGI(TAG, "Device in AP mode. Allowing CORS.");
         return ESP_OK;
     }
 
@@ -173,7 +181,7 @@ esp_err_t is_network_allowed(httpd_req_t * req)
     socklen_t addr_size = sizeof(addr);
 
     if (getpeername(sockfd, (struct sockaddr *)&addr, &addr_size) < 0) {
-        ESP_LOGE(CORS_TAG, "Error getting client IP");
+        ESP_LOGE(TAG, "Error getting client IP");
         return ESP_FAIL;
     }
 
@@ -189,10 +197,10 @@ esp_err_t is_network_allowed(httpd_req_t * req)
     char origin[128];
     uint32_t origin_ip_addr;
     if (httpd_req_get_hdr_value_str(req, "Origin", origin, sizeof(origin)) == ESP_OK) {
-        ESP_LOGD(CORS_TAG, "Origin header: %s", origin);
+        ESP_LOGD(TAG, "Origin header: %s", origin);
         origin_ip_addr = extract_origin_ip_addr(origin);
     } else {
-        ESP_LOGD(CORS_TAG, "No origin header found.");
+        ESP_LOGD(TAG, "No origin header found.");
         origin_ip_addr = request_ip_addr;
     }
 
@@ -200,7 +208,7 @@ esp_err_t is_network_allowed(httpd_req_t * req)
         return ESP_OK;
     }
 
-    ESP_LOGI(CORS_TAG, "Client is NOT in the private ip ranges or same range as server.");
+    ESP_LOGI(TAG, "Client is NOT in the private ip ranges or same range as server.");
     return ESP_FAIL;
 }
 
@@ -897,6 +905,302 @@ void websocket_log_handler()
     }
 }
 
+// Add base64 decoding function
+static unsigned char* base64_decode(const unsigned char* src, size_t len, size_t* out_len) {
+    unsigned char* out;
+    unsigned char* pos;
+    const unsigned char* end;
+    const unsigned char* in;
+    size_t olen;
+    int line_len;
+
+    ESP_LOGD(TAG, "Decoding base64 string: %s", src);
+
+    // Remove any padding characters for length calculation
+    while (len > 0 && src[len-1] == '=') {
+        len--;
+    }
+
+    olen = (len * 3) / 4;
+    if (olen == 0) {
+        ESP_LOGE(TAG, "Invalid base64 length: %d", len);
+        return NULL;
+    }
+
+    out = malloc(olen + 1);  // +1 for null terminator
+    if (out == NULL) {
+        ESP_LOGE(TAG, "Failed to allocate memory for base64 decode");
+        return NULL;
+    }
+
+    end = src + len;
+    in = src;
+    pos = out;
+    line_len = 0;
+
+    while (end - in >= 4) {
+        unsigned char in_buffer[4], out_buffer[3];
+        size_t i;
+
+        for (i = 0; i < 4; i++) {
+            unsigned char c = in[i];
+            if (c >= 'A' && c <= 'Z') {
+                in_buffer[i] = c - 'A';
+            } else if (c >= 'a' && c <= 'z') {
+                in_buffer[i] = c - 'a' + 26;
+            } else if (c >= '0' && c <= '9') {
+                in_buffer[i] = c - '0' + 52;
+            } else if (c == '+') {
+                in_buffer[i] = 62;
+            } else if (c == '/') {
+                in_buffer[i] = 63;
+            } else if (c == '=') {
+                in_buffer[i] = 0;
+            } else {
+                ESP_LOGE(TAG, "Invalid base64 character: %c", c);
+                free(out);
+                return NULL;
+            }
+        }
+
+        out_buffer[0] = (in_buffer[0] << 2) | (in_buffer[1] >> 4);
+        out_buffer[1] = (in_buffer[1] << 4) | (in_buffer[2] >> 2);
+        out_buffer[2] = (in_buffer[2] << 6) | in_buffer[3];
+
+        for (i = 0; i < 3; i++) {
+            *pos++ = out_buffer[i];
+        }
+
+        in += 4;
+        line_len += 4;
+    }
+
+    // Handle remaining bytes
+    if (end - in > 0) {
+        unsigned char in_buffer[4] = {0};
+        unsigned char out_buffer[3];
+        size_t i;
+
+        for (i = 0; i < end - in; i++) {
+            unsigned char c = in[i];
+            if (c >= 'A' && c <= 'Z') {
+                in_buffer[i] = c - 'A';
+            } else if (c >= 'a' && c <= 'z') {
+                in_buffer[i] = c - 'a' + 26;
+            } else if (c >= '0' && c <= '9') {
+                in_buffer[i] = c - '0' + 52;
+            } else if (c == '+') {
+                in_buffer[i] = 62;
+            } else if (c == '/') {
+                in_buffer[i] = 63;
+            }
+        }
+
+        out_buffer[0] = (in_buffer[0] << 2) | (in_buffer[1] >> 4);
+        if (end - in > 1) {
+            out_buffer[1] = (in_buffer[1] << 4) | (in_buffer[2] >> 2);
+            if (end - in > 2) {
+                out_buffer[2] = (in_buffer[2] << 6) | in_buffer[3];
+            }
+        }
+
+        for (i = 0; i < (end - in - 1); i++) {
+            *pos++ = out_buffer[i];
+        }
+    }
+
+    *pos = '\0';  // Null terminate the string
+    *out_len = pos - out;
+    ESP_LOGD(TAG, "Successfully decoded base64 string, length: %d", *out_len);
+    return out;
+}
+
+// Update authentication check function
+static esp_err_t check_auth(httpd_req_t *req)
+{
+    char auth_header[128];
+    if (httpd_req_get_hdr_value_str(req, "Authorization", auth_header, sizeof(auth_header)) != ESP_OK) {
+        ESP_LOGE(TAG, "Authentication required");
+        httpd_resp_set_status(req, "401 Unauthorized");
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_set_hdr(req, "WWW-Authenticate", "Basic realm=\"ESP-Miner\"");
+        httpd_resp_sendstr(req, "{\"error\": \"Authentication required\"}");
+        return ESP_FAIL;
+    }
+
+    // Check if the Authorization header starts with "Basic "
+    if (strncmp(auth_header, "Basic ", 6) != 0) {
+        ESP_LOGE(TAG, "Invalid authentication format");
+        httpd_resp_set_status(req, "401 Unauthorized");
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_set_hdr(req, "WWW-Authenticate", "Basic realm=\"ESP-Miner\"");
+        httpd_resp_sendstr(req, "{\"error\": \"Invalid authentication format\"}");
+        return ESP_FAIL;
+    }
+
+    // Get the base64 encoded credentials
+    char *credentials = auth_header + 6;
+    
+    // Get stored credentials from NVS
+    char *stored_username = nvs_config_get_string(NVS_CONFIG_WEB_USERNAME, "admin");
+    char *stored_password = nvs_config_get_string(NVS_CONFIG_WEB_PASSWORD, "admin");
+    
+    // Decode base64 credentials
+    size_t decoded_len;
+    unsigned char *decoded = base64_decode((const unsigned char *)credentials, strlen(credentials), &decoded_len);
+    if (!decoded) {
+        ESP_LOGE(TAG, "Failed to decode credentials");
+        free(stored_username);
+        free(stored_password);
+        httpd_resp_set_status(req, "401 Unauthorized");
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_set_hdr(req, "WWW-Authenticate", "Basic realm=\"ESP-Miner\"");
+        httpd_resp_sendstr(req, "{\"error\": \"Invalid credentials format\"}");
+        return ESP_FAIL;
+    }
+
+    // Split decoded string into username and password
+    char *decoded_str = (char *)decoded;
+    char *colon = strchr(decoded_str, ':');
+    if (!colon) {
+        ESP_LOGE(TAG, "Invalid credentials format");
+        free(decoded);
+        free(stored_username);
+        free(stored_password);
+        httpd_resp_set_status(req, "401 Unauthorized");
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_set_hdr(req, "WWW-Authenticate", "Basic realm=\"ESP-Miner\"");
+        httpd_resp_sendstr(req, "{\"error\": \"Invalid credentials format\"}");
+        return ESP_FAIL;
+    }
+
+    *colon = '\0';
+    char *username = decoded_str;
+    char *password = colon + 1;
+
+    // Compare credentials
+    bool auth_ok = (strcmp(username, stored_username) == 0 && strcmp(password, stored_password) == 0);
+    
+    free(decoded);
+    free(stored_username);
+    free(stored_password);
+
+    if (!auth_ok) {
+        ESP_LOGE(TAG, "Invalid credentials");
+        httpd_resp_set_status(req, "401 Unauthorized");
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_set_hdr(req, "WWW-Authenticate", "Basic realm=\"ESP-Miner\"");
+        httpd_resp_sendstr(req, "{\"error\": \"Invalid credentials\"}");
+        return ESP_FAIL;
+    }
+
+    return ESP_OK;
+}
+
+// Add wrapper functions for authenticated endpoints
+static esp_err_t POST_restart_auth(httpd_req_t *req)
+{
+    if (check_auth(req) != ESP_OK) {
+        return ESP_FAIL;
+    }
+    return POST_restart(req);
+}
+
+static esp_err_t PATCH_update_settings_auth(httpd_req_t *req)
+{
+    if (check_auth(req) != ESP_OK) {
+        return ESP_FAIL;
+    }
+    return PATCH_update_settings(req);
+}
+
+static esp_err_t POST_OTA_update_auth(httpd_req_t *req)
+{
+    if (check_auth(req) != ESP_OK) {
+        return ESP_FAIL;
+    }
+    return POST_OTA_update(req);
+}
+
+static esp_err_t POST_WWW_update_auth(httpd_req_t *req)
+{
+    if (check_auth(req) != ESP_OK) {
+        return ESP_FAIL;
+    }
+    return POST_WWW_update(req);
+}
+
+// Add handler for changing web credentials
+static esp_err_t PATCH_update_web_credentials(httpd_req_t *req)
+{
+    if (is_network_allowed(req) != ESP_OK) {
+        return httpd_resp_send_err(req, HTTPD_401_UNAUTHORIZED, "Unauthorized");
+    }
+
+    // Set CORS headers
+    if (set_cors_headers(req) != ESP_OK) {
+        httpd_resp_send_500(req);
+        return ESP_OK;
+    }
+
+    int total_len = req->content_len;
+    int cur_len = 0;
+    char * buf = ((rest_server_context_t *) (req->user_ctx))->scratch;
+    int received = 0;
+    if (total_len >= SCRATCH_BUFSIZE) {
+        /* Respond with 500 Internal Server Error */
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "content too long");
+        return ESP_OK;
+    }
+    while (cur_len < total_len) {
+        received = httpd_req_recv(req, buf + cur_len, total_len);
+        if (received <= 0) {
+            /* Respond with 500 Internal Server Error */
+            httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Failed to post control value");
+            return ESP_OK;
+        }
+        cur_len += received;
+    }
+    buf[total_len] = '\0';
+
+    cJSON * root = cJSON_Parse(buf);
+    cJSON * item;
+    if (root == NULL) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid JSON");
+        return ESP_OK;
+    }
+
+    bool updated = false;
+    if (cJSON_IsString(item = cJSON_GetObjectItem(root, "username"))) {
+        nvs_config_set_string(NVS_CONFIG_WEB_USERNAME, item->valuestring);
+        updated = true;
+    }
+    if (cJSON_IsString(item = cJSON_GetObjectItem(root, "password"))) {
+        nvs_config_set_string(NVS_CONFIG_WEB_PASSWORD, item->valuestring);
+        updated = true;
+    }
+
+    cJSON_Delete(root);
+
+    // Send success response
+    httpd_resp_set_type(req, "application/json");
+    if (updated) {
+        httpd_resp_sendstr(req, "{\"status\": \"success\", \"message\": \"Credentials updated successfully\"}");
+    } else {
+        httpd_resp_sendstr(req, "{\"status\": \"error\", \"message\": \"No credentials were updated\"}");
+    }
+    return ESP_OK;
+}
+
+// Add wrapper function for web credentials update
+static esp_err_t PATCH_update_web_credentials_auth(httpd_req_t *req)
+{
+    if (check_auth(req) != ESP_OK) {
+        return ESP_FAIL;
+    }
+    return PATCH_update_web_credentials(req);
+}
+
 esp_err_t start_rest_server(void * pvParameters)
 {
     GLOBAL_STATE = (GlobalState *) pvParameters;
@@ -950,10 +1254,10 @@ esp_err_t start_rest_server(void * pvParameters)
 
     /* URI handler for fetching system asic values */
     httpd_uri_t system_asic_get_uri = {
-    .uri = "/api/system/asic", 
-    .method = HTTP_GET, 
-    .handler = GET_system_asic, 
-    .user_ctx = rest_context
+        .uri = "/api/system/asic", 
+        .method = HTTP_GET, 
+        .handler = GET_system_asic, 
+        .user_ctx = rest_context
     };
     httpd_register_uri_handler(server, &system_asic_get_uri);
 
@@ -975,8 +1279,9 @@ esp_err_t start_rest_server(void * pvParameters)
     httpd_register_uri_handler(server, &swarm_options_uri);
 
     httpd_uri_t system_restart_uri = {
-        .uri = "/api/system/restart", .method = HTTP_POST, 
-        .handler = POST_restart, 
+        .uri = "/api/system/restart", 
+        .method = HTTP_POST, 
+        .handler = POST_restart_auth,  // Use auth wrapper
         .user_ctx = rest_context
     };
     httpd_register_uri_handler(server, &system_restart_uri);
@@ -992,7 +1297,7 @@ esp_err_t start_rest_server(void * pvParameters)
     httpd_uri_t update_system_settings_uri = {
         .uri = "/api/system", 
         .method = HTTP_PATCH, 
-        .handler = PATCH_update_settings, 
+        .handler = PATCH_update_settings_auth,  // Use auth wrapper
         .user_ctx = rest_context
     };
     httpd_register_uri_handler(server, &update_system_settings_uri);
@@ -1008,7 +1313,7 @@ esp_err_t start_rest_server(void * pvParameters)
     httpd_uri_t update_post_ota_firmware = {
         .uri = "/api/system/OTA", 
         .method = HTTP_POST, 
-        .handler = POST_OTA_update, 
+        .handler = POST_OTA_update_auth,  // Use auth wrapper
         .user_ctx = NULL
     };
     httpd_register_uri_handler(server, &update_post_ota_firmware);
@@ -1016,7 +1321,7 @@ esp_err_t start_rest_server(void * pvParameters)
     httpd_uri_t update_post_ota_www = {
         .uri = "/api/system/OTAWWW", 
         .method = HTTP_POST, 
-        .handler = POST_WWW_update, 
+        .handler = POST_WWW_update_auth,  // Use auth wrapper
         .user_ctx = NULL
     };
     httpd_register_uri_handler(server, &update_post_ota_www);
@@ -1029,6 +1334,23 @@ esp_err_t start_rest_server(void * pvParameters)
         .is_websocket = true
     };
     httpd_register_uri_handler(server, &ws);
+
+    // Add endpoint for changing web credentials
+    httpd_uri_t update_web_credentials_uri = {
+        .uri = "/api/system/webcredentials", 
+        .method = HTTP_PATCH, 
+        .handler = PATCH_update_web_credentials_auth,  // Use auth wrapper
+        .user_ctx = rest_context
+    };
+    httpd_register_uri_handler(server, &update_web_credentials_uri);
+
+    httpd_uri_t update_web_credentials_options_uri = {
+        .uri = "/api/system/webcredentials",
+        .method = HTTP_OPTIONS,
+        .handler = handle_options_request,
+        .user_ctx = NULL,
+    };
+    httpd_register_uri_handler(server, &update_web_credentials_options_uri);
 
     if (enter_recovery) {
         /* Make default route serve Recovery */
