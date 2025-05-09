@@ -93,7 +93,6 @@ export class SettingsComponent {
 
   }
   public updateSystem() {
-
     const form = this.form.getRawValue();
 
     form.frequency = parseInt(form.frequency);
@@ -115,7 +114,11 @@ export class SettingsComponent {
           this.toastr.success('Success!', 'Saved.');
         },
         error: (err: HttpErrorResponse) => {
-          this.toastr.error('Error.', `Could not save. ${err.message}`);
+          if (err.status === 401) {
+            this.toastr.error('Authentication required. Please enter your credentials.', 'Error');
+          } else {
+            this.toastr.error('Error.', `Could not save. ${err.message}`);
+          }
         }
       });
   }

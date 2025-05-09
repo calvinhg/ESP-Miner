@@ -74,8 +74,12 @@ export class PoolComponent implements OnInit {
           this.savedChanges = true;
         },
         error: (err: HttpErrorResponse) => {
-          const errorMessage = this.uri ? `Could not save pool settings for ${this.uri}. ${err.message}` : `Could not save pool settings. ${err.message}`;
-          this.toastr.error(errorMessage, 'Error');
+          if (err.status === 401) {
+            this.toastr.error('Authentication required. Please enter your credentials.', 'Error');
+          } else {
+            const errorMessage = this.uri ? `Could not save pool settings for ${this.uri}. ${err.message}` : `Could not save pool settings. ${err.message}`;
+            this.toastr.error(errorMessage, 'Error');
+          }
           this.savedChanges = false;
         }
       });
