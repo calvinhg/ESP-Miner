@@ -92,13 +92,11 @@ export class SecurityComponent implements OnInit {
           // Update credentials in system service
           this.systemService.setCredentials(form.webUsername, form.webPassword);
           
+          // Clear browser's stored credentials
+          this.systemService.clearBrowserCredentials();
+          
           // Show restart message
           this.toastr.info('Device is restarting...', 'Restarting');
-
-          // Force a page reload after a short delay to ensure the restart message is seen
-          setTimeout(() => {
-            window.location.reload();
-          }, 2000);
         },
         error: (err: HttpErrorResponse) => {
           if (err.status === 401) {

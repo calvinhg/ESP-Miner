@@ -42,7 +42,6 @@
 // Set log level for this file
 #define LOG_LEVEL ESP_LOG_VERBOSE
 static const char * TAG = "http_server";
-static const char * CORS_TAG = "CORS";
 
 // Forward declarations
 static esp_err_t GET_wifi_scan(httpd_req_t *req);

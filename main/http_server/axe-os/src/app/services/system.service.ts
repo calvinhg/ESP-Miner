@@ -3,6 +3,7 @@ import { Injectable } from '@angular/core';
 import { delay, Observable, of } from 'rxjs';
 import { eASICModel } from 'src/models/enum/eASICModel';
 import { ISystemInfo } from 'src/models/ISystemInfo';
+import { AuthInterceptor } from '../interceptors/auth.interceptor';
 
 import { environment } from '../../environments/environment';
 
@@ -12,7 +13,8 @@ import { environment } from '../../environments/environment';
 export class SystemService {
 
   constructor(
-    private httpClient: HttpClient
+    private httpClient: HttpClient,
+    private authInterceptor: AuthInterceptor
   ) { }
 
   public getInfo(uri: string = ''): Observable<ISystemInfo> {
@@ -148,5 +150,27 @@ export class SystemService {
 
   public updateSwarm(uri: string = '', swarmConfig: any) {
     return this.httpClient.patch(`${uri}/api/swarm`, swarmConfig);
+  }
+
+  public updateWebCredentials(uri: string = '', credentials: { username: string, password: string }) {
+    return this.httpClient.patch(`${uri}/api/system/webcredentials`, credentials);
+  }
+
+  public setCredentials(username: string, password: string) {
+    this.authInterceptor.setCredentials(username, password);
+  }
+
+  public clearBrowserCredentials() {
+    // Clear the auth interceptor's credentials
+    this.authInterceptor.setCredentials('', '');
+    
+    // Send a request to a non-existent endpoint to trigger a 401
+    // This will cause the browser to clear its stored credentials
+    this.httpClient.get('/api/clear-credentials', { responseType: 'text' })
+      .subscribe({
+        error: () => {
+          // Expected error, do nothing
+        }
+      });
   }
 }

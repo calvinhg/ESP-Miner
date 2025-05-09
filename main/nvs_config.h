@@ -34,8 +34,8 @@
 #define NVS_CONFIG_SWARM "swarmconfig"
 
 // Web authentication configuration
-#define NVS_CONFIG_WEB_USERNAME "admin"
-#define NVS_CONFIG_WEB_PASSWORD "admin"
+#define NVS_CONFIG_WEB_USERNAME "webusername"
+#define NVS_CONFIG_WEB_PASSWORD "webpassword"
 
 // Theme configuration
 #define NVS_CONFIG_THEME_SCHEME "themescheme"

@@ -28,6 +28,7 @@ export class AppMenuComponent implements OnInit {
                     { label: 'Pool Settings', icon: 'pi pi-fw pi-server', routerLink: ['pool'] },
                     { label: 'Customization', icon: 'pi pi-fw pi-palette', routerLink: ['design'] },
                     { label: 'Settings', icon: 'pi pi-fw pi-cog', routerLink: ['settings'] },
+                    { label: 'Security', icon: 'pi pi-fw pi-lock', routerLink: ['security'] },
                     { label: 'Logs', icon: 'pi pi-fw pi-list', routerLink: ['logs'] },
                     { label: 'Whitepaper', icon: 'pi pi-fw pi-bitcoin', command: () => window.open('/bitcoin.pdf', '_blank') },
                 ]

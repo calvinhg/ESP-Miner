@@ -10,6 +10,7 @@ import { DesignComponent } from './components/design/design.component';
 import { PoolComponent } from './components/pool/pool.component';
 import { AppLayoutComponent } from './layout/app.layout.component';
 import { ApModeGuard } from './guards/ap-mode.guard';
+import { SecurityComponent } from './components/security/security.component';
 
 const routes: Routes = [
   {
@@ -42,6 +43,10 @@ const routes: Routes = [
       {
         path: 'settings',
         component: SettingsComponent
+      },
+      {
+        path: 'security',
+        component: SecurityComponent
       },
       {
         path: 'swarm',

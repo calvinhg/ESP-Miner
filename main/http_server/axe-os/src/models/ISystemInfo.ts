@@ -50,6 +50,8 @@ export interface ISystemInfo {
     temptarget: number,
     fanrpm: number,
     coreVoltageActual: number,
+    webUsername?: string,
+    webPassword?: string,
 
     boardtemp1?: number,
     boardtemp2?: number,

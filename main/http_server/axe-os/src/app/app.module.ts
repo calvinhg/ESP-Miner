@@ -1,7 +1,7 @@
 import 'chartjs-adapter-moment';
 
 import { CommonModule, HashLocationStrategy, LocationStrategy } from '@angular/common';
-import { HttpClientModule } from '@angular/common/http';
+import { HttpClientModule, HTTP_INTERCEPTORS } from '@angular/common/http';
 import { NgModule } from '@angular/core';
 import { FormsModule, ReactiveFormsModule } from '@angular/forms';
 import { BrowserModule } from '@angular/platform-browser';
@@ -31,6 +31,8 @@ import { TooltipModule } from 'primeng/tooltip';
 import { DialogModule } from 'primeng/dialog';
 import { DynamicDialogModule, DialogService as PrimeDialogService } from 'primeng/dynamicdialog';
 import { DialogService, DialogListComponent } from './services/dialog.service';
+import { AuthInterceptor } from './interceptors/auth.interceptor';
+import { SecurityComponent } from './components/security/security.component';
 
 const components = [
   AppComponent,
@@ -41,7 +43,8 @@ const components = [
   NetworkComponent,
   SettingsComponent,
   LogsComponent,
-  PoolComponent
+  PoolComponent,
+  SecurityComponent
 ];
 
 @NgModule({
@@ -79,7 +82,13 @@ const components = [
   providers: [
     { provide: LocationStrategy, useClass: HashLocationStrategy },
     DialogService,
-    PrimeDialogService
+    PrimeDialogService,
+    AuthInterceptor,
+    {
+      provide: HTTP_INTERCEPTORS,
+      useClass: AuthInterceptor,
+      multi: true
+    }
   ],
   bootstrap: [AppComponent]
 })
